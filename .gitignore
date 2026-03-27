@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.idea
+.vscode
+.omx
+.playwright-cli
+node_modules
+build
+dist
+.gradle
+backend/build
+frontend/dist
+frontend/node_modules
+collaboration/node_modules
