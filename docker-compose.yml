@@ -9,41 +9,94 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erdtool"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
 
-  backend:
+  gateway-service:
     build:
       context: ./backend
-    environment:
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/erdtool}
-      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-erdtool}
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-erdtool}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-for-production}
-    depends_on:
-      - postgres
+      dockerfile: gateway-service/Dockerfile
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      TEAM_SERVICE_URL: http://team-service:8082
+      ERD_SERVICE_URL: http://erd-service:8083
+      COLLAB_SERVICE_URL: ws://collaboration:1234
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-for-production}
+    depends_on:
+      - auth-service
+      - team-service
+      - erd-service
+      - collaboration
+
+  auth-service:
+    build:
+      context: ./backend
+      dockerfile: auth-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-for-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  team-service:
+    build:
+      context: ./backend
+      dockerfile: team-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  erd-service:
+    build:
+      context: ./backend
+      dockerfile: erd-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      TEAM_SERVICE_URL: http://team-service:8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      team-service:
+        condition: service_started
 
   collaboration:
     build:
       context: ./collaboration
     depends_on:
       - redis
-    ports:
-      - "${COLLAB_PORT:-1234}:1234"
+    environment:
+      ERD_SERVICE_URL: http://erd-service:8083
+    expose:
+      - "1234"
 
   frontend:
     build:
       context: ./frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
-        VITE_COLLAB_URL: ${VITE_COLLAB_URL:-ws://localhost:1234}
+        VITE_COLLAB_URL: ${VITE_COLLAB_URL:-ws://localhost:8080/ws/collaboration}
     depends_on:
-      - backend
+      - gateway-service
       - collaboration
     ports:
       - "${FRONTEND_PORT:-5173}:80"

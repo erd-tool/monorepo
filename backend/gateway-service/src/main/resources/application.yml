@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedHeaders: "*"
+            allowedMethods: "*"
+            allowCredentials: false
+      routes:
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**
+        - id: team-service
+          uri: ${TEAM_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/teams/**
+        - id: erd-service
+          uri: ${ERD_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/erds/**
+        - id: collaboration-service
+          uri: ${COLLAB_SERVICE_URL:ws://localhost:1234}
+          predicates:
+            - Path=/ws/collaboration/**
+          filters:
+            - StripPrefix=2
+        - id: health
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/healthz
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-secret-key-for-production}

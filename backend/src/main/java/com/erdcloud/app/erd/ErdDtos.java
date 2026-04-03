@@ -1,6 +1,7 @@
 package com.erdcloud.app.erd;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public final class ErdDtos {
@@ -11,6 +12,7 @@ public final class ErdDtos {
     public record CreateErdRequest(
         @NotBlank @Size(max = 120) String title,
         @Size(max = 255) String description,
+        @Pattern(regexp = "public|private") String visibility,
         Long teamId
     ) {
     }
@@ -18,6 +20,7 @@ public final class ErdDtos {
     public record UpdateErdRequest(
         @NotBlank @Size(max = 120) String title,
         @Size(max = 255) String description,
+        @Pattern(regexp = "public|private") String visibility,
         @NotBlank String contentJson
     ) {
     }
@@ -26,6 +29,7 @@ public final class ErdDtos {
         Long id,
         String title,
         String description,
+        String visibility,
         Long teamId,
         String teamName,
         String updatedAt
@@ -36,10 +40,10 @@ public final class ErdDtos {
         Long id,
         String title,
         String description,
+        String visibility,
         Long teamId,
         String teamName,
         String contentJson
     ) {
     }
 }
-

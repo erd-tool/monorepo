@@ -26,6 +26,9 @@ public class ErdDocument extends BaseEntity {
     @Column(length = 255)
     private String description;
 
+    @Column(nullable = false, length = 16)
+    private String visibility;
+
     @Lob
     @Column(nullable = false)
     private String contentJson;
@@ -38,18 +41,19 @@ public class ErdDocument extends BaseEntity {
     @JoinColumn(name = "owner_team_id")
     private Team ownerTeam;
 
-    public ErdDocument(String title, String description, String contentJson, UserAccount ownerUser, Team ownerTeam) {
+    public ErdDocument(String title, String description, String visibility, String contentJson, UserAccount ownerUser, Team ownerTeam) {
         this.title = title;
         this.description = description;
+        this.visibility = visibility;
         this.contentJson = contentJson;
         this.ownerUser = ownerUser;
         this.ownerTeam = ownerTeam;
     }
 
-    public void update(String title, String description, String contentJson) {
+    public void update(String title, String description, String visibility, String contentJson) {
         this.title = title;
         this.description = description;
+        this.visibility = visibility;
         this.contentJson = contentJson;
     }
 }
-

@@ -1,2 +1,6 @@
-rootProject.name = "erdtool-backend"
-
+rootProject.name = 'erdcloud-msa'
+include 'common'
+include 'gateway-service'
+include 'auth-service'
+include 'team-service'
+include 'erd-service'

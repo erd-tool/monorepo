@@ -4,6 +4,7 @@
 .vscode
 .omx
 .playwright-cli
+.playwright-mcp
 node_modules
 build
 dist

@@ -1,0 +1,4 @@
+-- 각 서비스별 스키마 분리 (동일 DB, 다른 스키마)
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS team;
+CREATE SCHEMA IF NOT EXISTS erd;

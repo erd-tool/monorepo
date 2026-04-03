@@ -1,0 +1,19 @@
+server:
+  port: 8082
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/erdtool_team}
+    username: ${SPRING_DATASOURCE_USERNAME:erdtool}
+    password: ${SPRING_DATASOURCE_PASSWORD:erdtool}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: team
+    open-in-view: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false

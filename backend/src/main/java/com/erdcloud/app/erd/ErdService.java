@@ -43,6 +43,7 @@ public class ErdService {
         ErdDocument document = erdDocumentRepository.save(new ErdDocument(
             request.title(),
             request.description(),
+            request.visibility() != null ? request.visibility() : "private",
             EMPTY_DOCUMENT,
             user,
             ownerTeam
@@ -67,6 +68,7 @@ public class ErdService {
             document.getId(),
             document.getTitle(),
             document.getDescription(),
+            document.getVisibility(),
             document.getOwnerTeam() != null ? document.getOwnerTeam().getId() : null,
             document.getOwnerTeam() != null ? document.getOwnerTeam().getName() : null,
             document.getContentJson()
@@ -76,11 +78,17 @@ public class ErdService {
     @Transactional
     public ErdDtos.ErdDetail update(UserPrincipal principal, Long erdId, ErdDtos.UpdateErdRequest request) {
         ErdDocument document = getAccessibleDocument(principal.id(), erdId);
-        document.update(request.title(), request.description(), request.contentJson());
+        document.update(
+            request.title(),
+            request.description(),
+            request.visibility() != null ? request.visibility() : document.getVisibility(),
+            request.contentJson()
+        );
         return new ErdDtos.ErdDetail(
             document.getId(),
             document.getTitle(),
             document.getDescription(),
+            document.getVisibility(),
             document.getOwnerTeam() != null ? document.getOwnerTeam().getId() : null,
             document.getOwnerTeam() != null ? document.getOwnerTeam().getName() : null,
             document.getContentJson()
@@ -130,10 +138,10 @@ public class ErdService {
             document.getId(),
             document.getTitle(),
             document.getDescription(),
+            document.getVisibility(),
             document.getOwnerTeam() != null ? document.getOwnerTeam().getId() : null,
             document.getOwnerTeam() != null ? document.getOwnerTeam().getName() : null,
             document.getUpdatedAt() != null ? document.getUpdatedAt().toString() : Instant.now().toString()
         );
     }
 }
-
