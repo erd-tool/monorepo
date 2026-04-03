@@ -22,6 +22,15 @@ public class TeamInvitation extends BaseEntity {
     @JoinColumn(name = "team_id")
     private Team team;
 
+    @Column(nullable = false)
+    private Long inviteeUserId;
+
+    @Column(nullable = false, length = 50)
+    private String inviteeLoginId;
+
+    @Column(nullable = false, length = 80)
+    private String inviteeDisplayName;
+
     @Column(nullable = false, length = 120)
     private String inviteeEmail;
 
@@ -32,17 +41,54 @@ public class TeamInvitation extends BaseEntity {
     private boolean accepted;
 
     @Column(nullable = false)
+    private boolean rejected;
+
+    @Column(nullable = false)
     private Instant expiresAt;
 
-    public TeamInvitation(Team team, String inviteeEmail, String token, Instant expiresAt) {
+    public TeamInvitation(
+        Team team,
+        Long inviteeUserId,
+        String inviteeLoginId,
+        String inviteeDisplayName,
+        String inviteeEmail,
+        String token,
+        Instant expiresAt
+    ) {
         this.team = team;
+        this.inviteeUserId = inviteeUserId;
+        this.inviteeLoginId = inviteeLoginId;
+        this.inviteeDisplayName = inviteeDisplayName;
         this.inviteeEmail = inviteeEmail;
         this.token = token;
         this.expiresAt = expiresAt;
         this.accepted = false;
+        this.rejected = false;
     }
 
     public void accept() {
         this.accepted = true;
+        this.rejected = false;
+    }
+
+    public void reject() {
+        this.rejected = true;
+    }
+
+    public boolean isPending() {
+        return !accepted && !rejected && expiresAt.isAfter(Instant.now());
+    }
+
+    public String getStatus() {
+        if (accepted) {
+            return "ACCEPTED";
+        }
+        if (rejected) {
+            return "REJECTED";
+        }
+        if (expiresAt.isBefore(Instant.now())) {
+            return "EXPIRED";
+        }
+        return "PENDING";
     }
 }

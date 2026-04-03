@@ -14,6 +14,16 @@ spring:
         format_sql: true
         default_schema: team
     open-in-view: false
+  sql:
+    init:
+      mode: always
   jackson:
     serialization:
       write-dates-as-timestamps: false
+
+app:
+  services:
+    auth-service:
+      url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    erd-service:
+      url: ${ERD_SERVICE_URL:http://localhost:8083}

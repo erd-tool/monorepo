@@ -60,6 +60,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      ERD_SERVICE_URL: http://erd-service:8083
     depends_on:
       postgres:
         condition: service_healthy

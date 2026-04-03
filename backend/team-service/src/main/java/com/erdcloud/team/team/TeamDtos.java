@@ -1,8 +1,8 @@
 package com.erdcloud.team.team;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 
 public final class TeamDtos {
 
@@ -16,7 +16,7 @@ public final class TeamDtos {
     }
 
     public record InviteMemberRequest(
-        @NotBlank @Email String email
+        @NotBlank @Size(min = 4, max = 50) String loginId
     ) {
     }
 
@@ -24,15 +24,22 @@ public final class TeamDtos {
         Long id,
         String name,
         String description,
-        String role
+        String role,
+        long memberCount,
+        long invitationCount,
+        Instant updatedAt
     ) {
     }
 
     public record TeamInvitationResponse(
         Long id,
-        String email,
-        String token,
-        String teamName
+        Long teamId,
+        String teamName,
+        String inviteeLoginId,
+        String inviteeDisplayName,
+        String status,
+        Instant expiresAt,
+        Instant createdAt
     ) {
     }
 

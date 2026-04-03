@@ -8,4 +8,6 @@ public interface ErdDocumentRepository extends JpaRepository<ErdDocument, Long> 
     List<ErdDocument> findByOwnerUserId(Long userId);
 
     List<ErdDocument> findByOwnerTeamIdIn(List<Long> teamIds);
+
+    void deleteAllByOwnerTeamId(Long teamId);
 }

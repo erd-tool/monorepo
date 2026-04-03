@@ -80,6 +80,11 @@ public class ErdService {
         erdDocumentRepository.delete(document);
     }
 
+    @Transactional
+    public void deleteByTeamId(Long teamId) {
+        erdDocumentRepository.deleteAllByOwnerTeamId(teamId);
+    }
+
     @Transactional(readOnly = true)
     public String exportSql(Long userId, Long erdId, String dialect) {
         ErdDocument document = getReadableDocument(userId, erdId);

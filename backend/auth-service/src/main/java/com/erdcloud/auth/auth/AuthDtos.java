@@ -38,4 +38,12 @@ public final class AuthDtos {
         String displayName
     ) {
     }
+
+    public record UserLookupResponse(
+        Long id,
+        String loginId,
+        String email,
+        String displayName
+    ) {
+    }
 }
