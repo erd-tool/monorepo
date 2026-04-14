@@ -1,12 +1,23 @@
 const levels = ["debug", "info", "warn", "error"];
+const service = process.env.SERVICE_NAME || "collaboration";
 
-function log(level, message, meta = {}) {
+function log(level, event, meta = {}) {
   const safeLevel = levels.includes(level) ? level : "info";
-  const payload = {
-    ts: new Date().toISOString(),
-    level: safeLevel,
+  const {
     message,
-    ...meta
+    requestId = null,
+    roomId = null,
+    ...rest
+  } = meta;
+  const payload = {
+    timestamp: new Date().toISOString(),
+    level: safeLevel,
+    service,
+    requestId,
+    roomId,
+    event,
+    message: message || event,
+    ...rest
   };
 
   const line = JSON.stringify(payload);
@@ -22,4 +33,3 @@ function log(level, message, meta = {}) {
 }
 
 module.exports = { log };
-

@@ -5,6 +5,9 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.hateoas.CollectionModel;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,40 +23,63 @@ import org.springframework.web.bind.annotation.RestController;
 public class TeamController {
 
     private final TeamService teamService;
+    private final TeamRepresentationAssembler assembler;
 
     @GetMapping
-    public List<TeamDtos.TeamSummary> list(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
-        return teamService.list(userId);
+    public CollectionModel<TeamResourceModels.TeamSummaryModel> list(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
+        List<TeamResourceModels.TeamSummaryModel> models = teamService.list(userId).stream()
+            .map(assembler::toSummaryModel)
+            .toList();
+        return CollectionModel.of(models, linkTo(methodOn(TeamController.class).list(null)).withSelfRel());
+    }
+
+    @GetMapping("/{teamId}")
+    public TeamResourceModels.TeamSummaryModel get(
+        @RequestHeader(HeaderConstants.USER_ID) Long userId,
+        @PathVariable Long teamId
+    ) {
+        return assembler.toSummaryModel(teamService.get(userId, teamId));
     }
 
     @PostMapping
-    public TeamDtos.TeamSummary create(
+    public TeamResourceModels.TeamSummaryModel create(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @Valid @RequestBody TeamDtos.CreateTeamRequest request
     ) {
-        return teamService.create(userId, request);
+        return assembler.toSummaryModel(teamService.create(userId, request));
     }
 
     @PostMapping("/{teamId}/invitations")
-    public TeamDtos.TeamInvitationResponse invite(
+    public TeamResourceModels.TeamInvitationModel invite(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @PathVariable Long teamId,
         @Valid @RequestBody TeamDtos.InviteMemberRequest request
     ) {
-        return teamService.invite(userId, teamId, request);
+        return assembler.toInvitationModel(teamService.invite(userId, teamId, request));
     }
 
     @GetMapping("/invitations")
-    public List<TeamDtos.TeamInvitationResponse> listInvitations(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
-        return teamService.listInvitations(userId);
+    public CollectionModel<TeamResourceModels.TeamInvitationModel> listInvitations(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
+        List<TeamResourceModels.TeamInvitationModel> models = teamService.listInvitations(userId).stream()
+            .map(assembler::toInvitationModel)
+            .toList();
+        return CollectionModel.of(models, linkTo(methodOn(TeamController.class).listInvitations(null)).withSelfRel());
     }
 
-    @PostMapping("/invitations/{invitationId}/accept")
-    public TeamDtos.TeamSummary accept(
+    @GetMapping("/invitations/{invitationId}")
+    public TeamResourceModels.TeamInvitationModel getInvitation(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @PathVariable Long invitationId
     ) {
-        return teamService.accept(userId, invitationId);
+        return assembler.toInvitationModel(teamService.getInvitation(userId, invitationId));
+    }
+
+    @PostMapping("/invitations/{invitationId}/accept")
+    public TeamResourceModels.TeamSummaryModel accept(
+        @RequestHeader(HeaderConstants.USER_ID) Long userId,
+        @PathVariable Long invitationId
+    ) {
+        return assembler.toSummaryModel(teamService.accept(userId, invitationId));
     }
 
     @PostMapping("/invitations/{invitationId}/reject")
@@ -66,11 +92,11 @@ public class TeamController {
     }
 
     @PostMapping("/invitations/token/{token}/accept")
-    public TeamDtos.TeamSummary accept(
+    public TeamResourceModels.TeamSummaryModel accept(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @PathVariable String token
     ) {
-        return teamService.accept(userId, token);
+        return assembler.toSummaryModel(teamService.accept(userId, token));
     }
 
     @DeleteMapping("/{teamId}")

@@ -36,6 +36,15 @@ public class TeamService {
             .toList();
     }
 
+    @Transactional(readOnly = true)
+    public TeamDtos.TeamSummary get(Long userId, Long teamId) {
+        Team team = teamRepository.findById(teamId)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "팀을 찾을 수 없습니다."));
+        TeamMember member = teamMemberRepository.findByTeamAndUserId(team, userId)
+            .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "팀 접근 권한이 없습니다."));
+        return toTeamSummary(team, member.getRole());
+    }
+
     @Transactional
     public TeamDtos.TeamInvitationResponse invite(Long userId, Long teamId, TeamDtos.InviteMemberRequest request) {
         Team team = teamRepository.findById(teamId)
@@ -82,6 +91,14 @@ public class TeamService {
         return teamInvitationRepository.findByInviteeUserIdOrderByCreatedAtDesc(userId).stream()
             .map(this::toInvitationResponse)
             .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public TeamDtos.TeamInvitationResponse getInvitation(Long userId, Long invitationId) {
+        TeamInvitation invitation = teamInvitationRepository.findById(invitationId)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "초대를 찾을 수 없습니다."));
+        validateInvitationOwnership(userId, invitation);
+        return toInvitationResponse(invitation);
     }
 
     @Transactional

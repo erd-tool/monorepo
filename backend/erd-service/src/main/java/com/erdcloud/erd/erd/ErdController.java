@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.hateoas.CollectionModel;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -24,35 +27,39 @@ import org.springframework.web.bind.annotation.RestController;
 public class ErdController {
 
     private final ErdService erdService;
+    private final ErdRepresentationAssembler assembler;
 
     @GetMapping
-    public List<ErdDtos.ErdSummary> list(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
-        return erdService.list(userId);
+    public CollectionModel<ErdResourceModels.ErdSummaryModel> list(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
+        List<ErdResourceModels.ErdSummaryModel> models = erdService.list(userId).stream()
+            .map(assembler::toSummaryModel)
+            .toList();
+        return CollectionModel.of(models, linkTo(methodOn(ErdController.class).list(null)).withSelfRel());
     }
 
     @PostMapping
-    public ErdDtos.ErdSummary create(
+    public ErdResourceModels.ErdSummaryModel create(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @Valid @RequestBody ErdDtos.CreateErdRequest request
     ) {
-        return erdService.create(userId, request);
+        return assembler.toSummaryModel(erdService.create(userId, request));
     }
 
     @GetMapping("/{erdId}")
-    public ErdDtos.ErdDetail get(
+    public ErdResourceModels.ErdDetailModel get(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @PathVariable Long erdId
     ) {
-        return erdService.get(userId, erdId);
+        return assembler.toDetailModel(erdService.get(userId, erdId));
     }
 
     @PatchMapping("/{erdId}")
-    public ErdDtos.ErdDetail update(
+    public ErdResourceModels.ErdDetailModel update(
         @RequestHeader(HeaderConstants.USER_ID) Long userId,
         @PathVariable Long erdId,
         @Valid @RequestBody ErdDtos.UpdateErdRequest request
     ) {
-        return erdService.update(userId, erdId, request);
+        return assembler.toDetailModel(erdService.update(userId, erdId, request));
     }
 
     @DeleteMapping("/{erdId}")

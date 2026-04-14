@@ -3,6 +3,8 @@ package com.erdcloud.auth.auth;
 import com.erdcloud.common.HeaderConstants;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.hateoas.MediaTypes;
+import org.springframework.hateoas.EntityModel;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthModelAssembler authModelAssembler;
 
     @PostMapping("/signup")
     public AuthDtos.AuthResponse signup(@Valid @RequestBody AuthDtos.SignupRequest request) {
@@ -28,8 +31,8 @@ public class AuthController {
     }
 
     // Gateway가 JWT를 검증하고 X-USER-ID 헤더를 주입하므로 헤더에서 userId를 읽음
-    @GetMapping("/me")
-    public AuthDtos.MeResponse me(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
-        return authService.me(userId);
+    @GetMapping(value = "/me", produces = MediaTypes.HAL_JSON_VALUE)
+    public EntityModel<AuthDtos.MeResponse> me(@RequestHeader(HeaderConstants.USER_ID) Long userId) {
+        return authModelAssembler.toModel(authService.me(userId));
     }
 }

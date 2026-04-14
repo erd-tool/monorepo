@@ -62,6 +62,18 @@ public class ErdService {
         return toDetail(document);
     }
 
+    @Transactional(readOnly = true)
+    public ErdDtos.ErdDetail getPublic(Long erdId) {
+        ErdDocument document = erdDocumentRepository.findById(erdId)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ERD를 찾을 수 없습니다."));
+
+        if (!"public".equals(document.getVisibility())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "공개 ERD를 찾을 수 없습니다.");
+        }
+
+        return toDetail(document);
+    }
+
     @Transactional
     public ErdDtos.ErdDetail update(Long userId, Long erdId, ErdDtos.UpdateErdRequest request) {
         ErdDocument document = getWritableDocument(userId, erdId);

@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gateway-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["gateway-service:8080"]
+
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["auth-service:8081"]
+
+  - job_name: team-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["team-service:8082"]
+
+  - job_name: erd-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["erd-service:8083"]
+
+  - job_name: collaboration
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["collaboration:1234"]

@@ -1,9 +1,11 @@
 const http = require("http");
 const express = require("express");
 const { WebSocketServer } = require("ws");
+const decoding = require("lib0/dist/decoding.cjs");
 const { v4: uuidv4 } = require("uuid");
 const { setupWSConnection } = require("../node_modules/y-websocket/bin/utils.js");
 const { log } = require("./logger");
+const metrics = require("./metrics");
 
 const PORT = Number(process.env.PORT || 1234);
 const ERD_SERVICE_URL = (process.env.ERD_SERVICE_URL || "http://localhost:8083").replace(/\/$/, "");
@@ -11,8 +13,11 @@ const ERD_SERVICE_URL = (process.env.ERD_SERVICE_URL || "http://localhost:8083")
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
-app.use((req, _res, next) => {
+app.use((req, res, next) => {
+  req.requestId = getHeader(req, "x-request-id") || uuidv4();
+  res.setHeader("X-Request-Id", req.requestId);
   log("info", "http_request", {
+    requestId: req.requestId,
     method: req.method,
     path: req.path
   });
@@ -31,8 +36,17 @@ app.get("/healthz", (_req, res) => {
   res.status(200).json({
     status: "ok",
     service: "collaboration",
-    requestId: uuidv4()
+    requestId: _req.requestId || uuidv4()
   });
+});
+
+app.get("/metrics", async (req, res, next) => {
+  try {
+    res.setHeader("Content-Type", metrics.metricsContentType);
+    res.status(200).send(await metrics.register.metrics());
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.use((err, _req, res, _next) => {
@@ -52,14 +66,22 @@ server.on("upgrade", async (req, socket, head) => {
 
   const gatewayContext = extractGatewayContext(req);
   if (!gatewayContext) {
-    log("warn", "ws_upgrade_rejected", { reason: "missing_gateway_headers" });
+    log("warn", "ws_upgrade_rejected", {
+      reason: "missing_gateway_headers",
+      requestId: getHeader(req, "x-request-id") || uuidv4()
+    });
     rejectUpgrade(socket, 401, "Gateway 인증 헤더가 필요합니다.");
     return;
   }
 
   const roomId = pathname.replace(/^\/+/, "");
   if (!/^\d+$/.test(roomId)) {
-    log("warn", "ws_upgrade_rejected", { reason: "invalid_room_id", path: pathname });
+    log("warn", "ws_upgrade_rejected", {
+      reason: "invalid_room_id",
+      path: pathname,
+      roomId,
+      requestId: gatewayContext.requestId
+    });
     rejectUpgrade(socket, 400, "유효한 ERD room id가 필요합니다.");
     return;
   }
@@ -86,6 +108,9 @@ server.on("upgrade", async (req, socket, head) => {
 wss.on("connection", (ws, req) => {
   const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
   const context = req.collaborationContext || {};
+  ws.collaborationContext = context;
+  ws.metricsClosed = false;
+  metrics.connectionOpened(context.roomId);
   log("info", "ws_connection", {
     path: pathname,
     remoteAddress: req.socket.remoteAddress,
@@ -99,15 +124,29 @@ wss.on("connection", (ws, req) => {
     gc: true
   });
 
+  ws.on("message", (message) => {
+    metrics.inboundMessage(classifyMessageKind(message));
+  });
+
   ws.on("close", (code, reason) => {
+    handleConnectionClosed(ws);
     log("info", "ws_close", {
+      requestId: context.requestId,
+      roomId: context.roomId,
+      userId: context.userId,
       code,
       reason: reason?.toString?.() || ""
     });
   });
 
   ws.on("error", (error) => {
-    log("error", "ws_error", { error: error.message });
+    metrics.wsError();
+    log("error", "ws_error", {
+      requestId: context.requestId,
+      roomId: context.roomId,
+      userId: context.userId,
+      error: error.message
+    });
   });
 });
 
@@ -193,4 +232,39 @@ function rejectUpgrade(socket, statusCode, message) {
       JSON.stringify({ message })
   );
   socket.destroy();
+}
+
+function handleConnectionClosed(ws) {
+  if (ws.metricsClosed) {
+    return;
+  }
+  ws.metricsClosed = true;
+  metrics.connectionClosed(ws.collaborationContext?.roomId);
+}
+
+function classifyMessageKind(rawMessage) {
+  try {
+    const buffer = rawMessage instanceof Uint8Array ? rawMessage : new Uint8Array(rawMessage);
+    const decoder = decoding.createDecoder(buffer);
+    const protocolType = decoding.readVarUint(decoder);
+    if (protocolType === 0) {
+      const syncType = decoding.readVarUint(decoder);
+      if (syncType === 0) {
+        return "sync_step1";
+      }
+      if (syncType === 1) {
+        return "sync_step2";
+      }
+      if (syncType === 2) {
+        return "update";
+      }
+      return "sync_unknown";
+    }
+    if (protocolType === 1) {
+      return "awareness";
+    }
+    return "unknown";
+  } catch (_error) {
+    return "unknown";
+  }
 }

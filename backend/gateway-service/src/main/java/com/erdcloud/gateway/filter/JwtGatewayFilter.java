@@ -1,10 +1,8 @@
 package com.erdcloud.gateway.filter;
-
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -21,11 +19,6 @@ import reactor.core.publisher.Mono;
 public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String USER_ID = "X-USER-ID";
-    private static final String USER_LOGIN_ID = "X-USER-LOGIN-ID";
-    private static final String USER_ROLE = "X-USER-ROLE";
-    private static final String USER_EMAIL = "X-USER-EMAIL";
-    private static final String REQUEST_ID = "X-REQUEST-ID";
 
     private final SecretKey key;
 
@@ -55,22 +48,29 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
                 .parseSignedClaims(token)
                 .getPayload();
 
+            String requestId = GatewayRequestCorrelationMdc.ensureRequestId(
+                exchange.getRequest().getHeaders().getFirst(GatewayHeaderConstants.REQUEST_ID)
+            );
+            String userId = String.valueOf(claims.get("userId", Long.class));
+            String userLoginId = claims.getSubject();
+
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                 .headers(headers -> {
-                    headers.remove(USER_ID);
-                    headers.remove(USER_LOGIN_ID);
-                    headers.remove(USER_ROLE);
-                    headers.remove(USER_EMAIL);
-                    headers.remove(REQUEST_ID);
-                    headers.set(USER_ID, claims.get("userId", Long.class).toString());
-                    headers.set(USER_LOGIN_ID, claims.getSubject());
-                    setIfPresent(headers, USER_ROLE, claims.get("role", String.class));
-                    setIfPresent(headers, USER_EMAIL, claims.get("email", String.class));
-                    headers.set(REQUEST_ID, UUID.randomUUID().toString());
+                    headers.remove(GatewayHeaderConstants.USER_ID);
+                    headers.remove(GatewayHeaderConstants.USER_LOGIN_ID);
+                    headers.remove(GatewayHeaderConstants.USER_ROLE);
+                    headers.remove(GatewayHeaderConstants.USER_EMAIL);
+                    headers.set(GatewayHeaderConstants.USER_ID, userId);
+                    headers.set(GatewayHeaderConstants.USER_LOGIN_ID, userLoginId);
+                    setIfPresent(headers, GatewayHeaderConstants.USER_ROLE, claims.get("role", String.class));
+                    setIfPresent(headers, GatewayHeaderConstants.USER_EMAIL, claims.get("email", String.class));
+                    headers.set(GatewayHeaderConstants.REQUEST_ID, requestId);
                 })
                 .build();
 
-            return chain.filter(exchange.mutate().request(mutatedRequest).build());
+            GatewayRequestCorrelationMdc.Scope scope = GatewayRequestCorrelationMdc.open(requestId, userId, userLoginId);
+            return chain.filter(exchange.mutate().request(mutatedRequest).build())
+                .doFinally(signalType -> scope.close());
 
         } catch (Exception e) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
@@ -86,6 +86,8 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
     private boolean isPublicPath(String path) {
         return path.equals("/api/auth/signup")
             || path.equals("/api/auth/login")
+            || path.startsWith("/api/public/erds/")
+            || path.startsWith("/actuator/")
             || path.equals("/healthz");
     }
 
