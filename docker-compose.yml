@@ -55,10 +55,10 @@ services:
       context: ./backend
       dockerfile: auth-service/Dockerfile
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-for-production}
+    volumes:
+      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,11 +80,11 @@ services:
       context: ./backend
       dockerfile: team-service/Dockerfile
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       AUTH_SERVICE_URL: http://auth-service:8081
       ERD_SERVICE_URL: http://erd-service:8083
+    volumes:
+      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,10 +106,10 @@ services:
       context: ./backend
       dockerfile: erd-service/Dockerfile
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/erdtool
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-erdtool}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
+      SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       TEAM_SERVICE_URL: http://team-service:8082
+    volumes:
+      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
     depends_on:
       postgres:
         condition: service_healthy

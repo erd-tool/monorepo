@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://db.example.com:2001/erdtool
+    username: your-db-user
+    password: your-db-password
