@@ -139,6 +139,9 @@ jobs:
       - backend-test
       - frontend-build
       - collaboration-check
+    # PR에서는 빠른 피드백이 더 중요하므로 무거운 풀스택 smoke test를 생략합니다.
+    # 이 job은 main 브랜치 push 또는 GitHub UI에서 수동 실행했을 때만 동작합니다.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout Source
