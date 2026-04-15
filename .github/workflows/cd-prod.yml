@@ -172,6 +172,32 @@ jobs:
           set -e
           cd "${{ vars.PROD_APP_DIR }}"
 
+          dump_diagnostics() {
+            echo "===== docker compose ps ====="
+            docker compose -f docker-compose.prod.yml ps || true
+            echo "===== spring service logs ====="
+            docker compose -f docker-compose.prod.yml logs --tail=200 auth-service team-service erd-service gateway-service || true
+            echo "===== collaboration logs ====="
+            docker compose -f docker-compose.prod.yml logs --tail=100 collaboration || true
+            echo "===== db config presence ====="
+            if [ -f ".env" ]; then
+              grep '^DB_CONFIG_DIR=' .env || true
+            fi
+            echo "===== compose config volume mapping ====="
+            docker compose -f docker-compose.prod.yml config | grep '/config:ro' || true
+            if [ -f "./ops/config/db.yml" ]; then
+              echo "db.yml exists at ./ops/config/db.yml"
+            elif [ -f "/opt/config/db.yml" ]; then
+              echo "db.yml exists at /opt/config/db.yml"
+            elif [ -f "/opt/erd-tool/config/db.yml" ]; then
+              echo "db.yml exists at /opt/erd-tool/config/db.yml"
+            else
+              echo "db.yml not found from deployment script context"
+            fi
+          }
+
+          trap 'dump_diagnostics' ERR
+
           echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ${{ env.REGISTRY }} \
             -u "${{ vars.GHCR_READ_USERNAME }}" --password-stdin
 
