@@ -1,0 +1,170 @@
+name: CD Production
+
+# 이 워크플로는 main 브랜치에 반영된 결과를 운영 환경으로 배포합니다.
+# 흐름은 "이미지 빌드/푸시 -> 운영 서버에 배포 파일 업로드 -> SSH 접속 후 compose 재기동" 순서입니다.
+on:
+  # main에 머지되면 자동 배포를 수행합니다.
+  push:
+    branches:
+      - main
+
+  # 필요할 때 GitHub UI에서 수동으로도 재배포할 수 있도록 열어둡니다.
+  workflow_dispatch:
+
+# 운영 배포는 동시에 두 번 돌지 않게 직렬화합니다.
+# 배포 도중 이전 실행을 끊어버리면 서버 상태가 꼬일 수 있으므로 cancel-in-progress는 false로 둡니다.
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+# GHCR에 이미지를 올려야 하므로 packages: write 권한이 필요합니다.
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # GHCR 기본 레지스트리 주소입니다.
+  REGISTRY: ghcr.io
+
+  # github.repository 값은 "erd-tool/monorepo" 형태로 들어옵니다.
+  IMAGE_REPOSITORY: ${{ github.repository }}
+
+  # latest 외에 롤백 가능한 불변 태그도 함께 남기기 위해 커밋 SHA 기반 태그를 사용합니다.
+  IMAGE_TAG: sha-${{ github.sha }}
+
+jobs:
+  build-and-push:
+    name: Build And Push Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway-service
+            context: ./backend
+            dockerfile: ./backend/gateway-service/Dockerfile
+          - service: auth-service
+            context: ./backend
+            dockerfile: ./backend/auth-service/Dockerfile
+          - service: team-service
+            context: ./backend
+            dockerfile: ./backend/team-service/Dockerfile
+          - service: erd-service
+            context: ./backend
+            dockerfile: ./backend/erd-service/Dockerfile
+          - service: collaboration
+            context: ./collaboration
+            dockerfile: ./collaboration/Dockerfile
+          - service: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            # 현재 프론트는 Nginx 프록시 기반이라 운영 이미지 빌드 시 build arg를 비워도 동작합니다.
+            build-args: |
+              VITE_API_BASE_URL=
+              VITE_COLLAB_URL=
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # GITHUB_TOKEN으로 GHCR에 로그인합니다.
+      # 저장소 Actions 권한이 "Read and write" 여야 정상 push 됩니다.
+      - name: Login To GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # buildx를 사용하면 최신 Docker BuildKit 기능과 캐시를 활용할 수 있습니다.
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 서비스별 이미지를 빌드하고 GHCR에 push 합니다.
+      # latest와 sha 태그를 같이 남겨두면 "현재 최신 배포"와 "정확한 롤백 지점"을 모두 확보할 수 있습니다.
+      - name: Build And Push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: ${{ matrix.build-args || '' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy-to-production:
+    name: Deploy To Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - build-and-push
+
+    # production Environment에 연결하면 승인, secret, variable 범위를 이 job으로 제한할 수 있습니다.
+    environment:
+      name: production
+
+    # 수동 실행이든 push 실행이든, 실제 배포는 main 브랜치 기준에서만 수행합니다.
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # GitHub runner에서 사용할 SSH 키를 임시 파일로 생성합니다.
+      # PROD_SSH_KEY에는 배포용 개인키 전체가 들어 있어야 합니다.
+      - name: Prepare SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/prod_deploy_key
+          chmod 600 ~/.ssh/prod_deploy_key
+
+      # 운영 서버의 host key를 미리 등록해 두면 StrictHostKeyChecking을 유지한 채 자동화가 가능합니다.
+      - name: Register Production Host Key
+        run: |
+          ssh-keyscan -p "${{ vars.PROD_PORT }}" "${{ vars.PROD_HOST }}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # 운영 서버에 필요한 compose/ops 파일만 tar로 묶어 보냅니다.
+      # .env, db.yml 같은 민감한 운영 파일은 서버에 남겨두고 덮어쓰지 않습니다.
+      - name: Upload Deployment Files
+        run: |
+          tar -czf deploy-bundle.tgz docker-compose.prod.yml ops
+          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
+            "mkdir -p '${{ vars.PROD_APP_DIR }}'"
+          scp -i ~/.ssh/prod_deploy_key -P "${{ vars.PROD_PORT }}" deploy-bundle.tgz \
+            "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}:${{ vars.PROD_APP_DIR }}/deploy-bundle.tgz"
+          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
+            "cd '${{ vars.PROD_APP_DIR }}' && tar -xzf deploy-bundle.tgz && rm -f deploy-bundle.tgz"
+
+      # 서버에서 GHCR 로그인 -> 최신 태그 pull -> compose 재기동 -> health check 순서로 배포합니다.
+      # IMAGE_TAG는 .env를 수정하지 않고 명령 실행 시점에만 주입해서 롤백을 쉽게 만듭니다.
+      - name: Deploy On Production Server
+        run: |
+          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" <<EOF
+          set -e
+          cd "${{ vars.PROD_APP_DIR }}"
+
+          echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ${{ env.REGISTRY }} \
+            -u "${{ vars.GHCR_READ_USERNAME }}" --password-stdin
+
+          IMAGE_TAG="${{ env.IMAGE_TAG }}" docker compose -f docker-compose.prod.yml pull
+          IMAGE_TAG="${{ env.IMAGE_TAG }}" docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+          docker compose -f docker-compose.prod.yml ps
+
+          # 게이트웨이 health check는 운영 배포 성공 여부를 빠르게 판단하는 핵심 기준입니다.
+          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:8080/actuator/health
+          EOF
+
+      # 배포 결과로 어떤 태그가 올라갔는지 Actions 로그에 남깁니다.
+      - name: Print Deployment Summary
+        run: |
+          echo "배포 완료"
+          echo "서버: ${{ vars.PROD_HOST }}"
+          echo "이미지 태그: ${{ env.IMAGE_TAG }}"

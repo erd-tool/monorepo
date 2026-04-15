@@ -35,9 +35,13 @@ ERD Cloud 스타일의 웹 기반 협업 ERD 도구입니다. 현재는 `gateway
 
 ```bash
 cp .env.example .env
+cp ops/config/db.yml.example ops/config/db.yml
+# edit ops/config/db.yml for your external DB server if needed
 docker compose build
 docker compose up -d
 ```
+
+DB 연결 정보는 `docker-compose.yml` 에 직접 넣지 않고, 호스트의 `${DB_CONFIG_DIR:-./ops/config}/db.yml` 파일을 각 Spring 서비스가 읽습니다. 실제 운영값은 `ops/config/db.yml` 대신 서버의 별도 디렉터리를 사용하고, `.env` 에 `DB_CONFIG_DIR=/opt/erd/config` 처럼 지정하면 됩니다.
 
 기본 접속:
 

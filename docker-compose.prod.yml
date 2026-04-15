@@ -1,35 +1,17 @@
-# 로컬 개발 및 전체 스택 검증용 compose 파일입니다.
-# 현재 워크스페이스에서 이미지를 직접 빌드하며, 내부 PostgreSQL 컨테이너를 포함합니다.
+# 운영 배포용 compose 파일입니다.
+# 레지스트리에서 미리 빌드된 이미지를 내려받아 사용하며, 데이터베이스는 이 스택 외부에 있다고 가정합니다.
 services:
-  # 개발 및 스모크 테스트용 로컬 PostgreSQL입니다.
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-erdtool}
-      POSTGRES_USER: ${POSTGRES_USER:-erdtool}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erdtool}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erdtool"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   # 협업 서비스에서 사용하는 공용 캐시 및 pub/sub 용도입니다.
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
 
-  # 백엔드 마이크로서비스 앞단의 공개 API 게이트웨이입니다.
+  # 외부 클라이언트가 접근하는 공개 API 게이트웨이입니다.
   gateway-service:
-    build:
-      context: ./backend
-      dockerfile: gateway-service/Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/gateway-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     environment:
@@ -52,22 +34,19 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "gateway-service"
 
-  # 마운트된 db.yml 설정을 읽는 인증 서비스입니다.
+  # 마운트된 db.yml 파일에서 데이터소스 설정을 읽는 인증 서비스입니다.
   auth-service:
-    build:
-      context: ./backend
-      dockerfile: auth-service/Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/auth-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-for-production}
     volumes:
-      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
+      - ${DB_CONFIG_DIR:-/opt/erd/config}:/config:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       logstash:
         condition: service_started
     healthcheck:
@@ -78,23 +57,20 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "auth-service"
 
   # 팀 및 초대 관리 서비스입니다.
   team-service:
-    build:
-      context: ./backend
-      dockerfile: team-service/Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/team-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       AUTH_SERVICE_URL: http://auth-service:8081
       ERD_SERVICE_URL: http://erd-service:8083
     volumes:
-      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
+      - ${DB_CONFIG_DIR:-/opt/erd/config}:/config:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       logstash:
         condition: service_started
     healthcheck:
@@ -105,22 +81,19 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "team-service"
 
   # ERD CRUD, 내보내기, 공개 조회를 담당하는 서비스입니다.
   erd-service:
-    build:
-      context: ./backend
-      dockerfile: erd-service/Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/erd-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       SPRING_CONFIG_IMPORT: optional:file:/config/db.yml
       TEAM_SERVICE_URL: http://team-service:8082
     volumes:
-      - ${DB_CONFIG_DIR:-./ops/config}:/config:ro
+      - ${DB_CONFIG_DIR:-/opt/erd/config}:/config:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       team-service:
         condition: service_started
       logstash:
@@ -133,13 +106,13 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "erd-service"
 
   # Yjs/WebSocket 기반 실시간 협업 서버입니다.
   collaboration:
-    build:
-      context: ./collaboration
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/collaboration:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       ERD_SERVICE_URL: http://erd-service:8083
     expose:
@@ -157,16 +130,13 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "collaboration"
 
   # 게이트웨이로 리버스 프록시되는 Nginx 기반 프론트엔드입니다.
   frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_BASE_URL: ""
-        VITE_COLLAB_URL: ""
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     depends_on:
       gateway-service:
         condition: service_started
@@ -175,16 +145,17 @@ services:
       logstash:
         condition: service_started
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_PORT:-80}:80"
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://127.0.0.1:12201"
+        gelf-address: "${GELF_ADDRESS:-udp://127.0.0.1:12201}"
         tag: "frontend"
 
   # 구조화 로그 수집 및 검색을 위한 ELK 스택입니다.
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    restart: unless-stopped
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -197,6 +168,7 @@ services:
   # 애플리케이션 로그를 수집하고 Elasticsearch로 전달합니다.
   logstash:
     image: docker.elastic.co/logstash/logstash:8.15.3
+    restart: unless-stopped
     ports:
       - "12201:12201/udp"
       - "5000:5000/tcp"
@@ -211,11 +183,12 @@ services:
   # 수집된 로그를 조회하고 분석하는 Kibana입니다.
   kibana:
     image: docker.elastic.co/kibana/kibana:8.15.3
+    restart: unless-stopped
     ports:
       - "5601:5601"
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "${KIBANA_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef}"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${KIBANA_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef}
     depends_on:
       elasticsearch:
         condition: service_started
@@ -223,6 +196,7 @@ services:
   # 서비스 메트릭 수집 및 대시보드를 위한 모니터링 스택입니다.
   prometheus:
     image: prom/prometheus:v2.54.1
+    restart: unless-stopped
     ports:
       - "9090:9090"
     command:
@@ -247,6 +221,7 @@ services:
   # Prometheus 데이터를 시각화하는 Grafana입니다.
   grafana:
     image: grafana/grafana:11.2.2
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
@@ -262,7 +237,7 @@ services:
         condition: service_started
 
 volumes:
-  postgres-data:
+  redis-data:
   elasticsearch-data:
   prometheus-data:
   grafana-data:

@@ -1,0 +1,195 @@
+name: CI
+
+# 이 워크플로는 "코드가 최소한 빌드/테스트 가능한 상태인지"를 검증합니다.
+# 운영 배포는 여기서 하지 않고, 별도의 CD 워크플로에서 수행합니다.
+on:
+  # main 브랜치로 들어오는 PR은 반드시 CI를 거치게 합니다.
+  pull_request:
+    branches:
+      - main
+
+  # main에 직접 push 되었을 때도 동일한 검증을 수행합니다.
+  push:
+    branches:
+      - main
+
+  # GitHub UI에서 수동 실행할 수 있도록 열어둡니다.
+  workflow_dispatch:
+
+# 같은 브랜치에서 연속 push가 발생하면 이전 실행을 취소해서 리소스를 아낍니다.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI는 소스코드를 읽기만 하면 충분하므로 최소 권한만 부여합니다.
+permissions:
+  contents: read
+
+jobs:
+  backend-test:
+    name: Backend Build And Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # 백엔드 관련 명령은 backend 디렉터리에서 실행합니다.
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # 저장소 코드를 러너로 내려받습니다.
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # 프로젝트가 Java 21을 사용하므로 동일한 버전으로 맞춥니다.
+      - name: Set Up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # Gradle 캐시 및 실행 환경을 안정적으로 구성합니다.
+      # 현재 저장소는 gradle wrapper가 없어서, 사용할 Gradle 버전을 명시적으로 설치합니다.
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "8.10.2"
+
+      # 백엔드 전체 모듈의 컴파일/테스트를 한 번에 검증합니다.
+      - name: Run Backend Tests
+        run: gradle test --no-daemon
+
+      # 테스트가 실패했을 때 리포트를 아티팩트로 남겨 원인 파악을 쉽게 합니다.
+      - name: Upload Backend Test Reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/**/build/reports/tests/test
+            backend/**/build/test-results/test
+          if-no-files-found: ignore
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # frontend, collaboration 모두 Node 22 기반 Dockerfile을 사용하므로
+      # CI도 같은 메이저 버전으로 맞춥니다.
+      - name: Set Up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # package-lock.json 기준으로 의존성을 고정 설치합니다.
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      # 타입스크립트 빌드 + Vite 번들 생성까지 확인합니다.
+      - name: Build Frontend
+        run: npm run build
+
+  collaboration-check:
+    name: Collaboration Syntax Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: collaboration
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set Up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: collaboration/package-lock.json
+
+      - name: Install Collaboration Dependencies
+        run: npm ci
+
+      # 별도 테스트 스크립트가 아직 없으므로 우선 서버 핵심 파일들의 문법 오류를 막습니다.
+      - name: Check Collaboration Source Syntax
+        run: |
+          node --check src/server.js
+          node --check src/logger.js
+          node --check src/metrics.js
+
+  docker-smoke:
+    name: Docker Compose Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs:
+      - backend-test
+      - frontend-build
+      - collaboration-check
+    # PR에서는 빠른 피드백이 더 중요하므로 무거운 풀스택 smoke test를 생략합니다.
+    # 이 job은 main 브랜치 push 또는 GitHub UI에서 수동 실행했을 때만 동작합니다.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # docker-compose.yml은 /config/db.yml 을 읽도록 되어 있으므로
+      # CI 러너 안에서만 사용할 임시 DB 설정 파일을 생성합니다.
+      - name: Prepare Local Database Config For CI
+        run: |
+          mkdir -p ops/config
+          cat > ops/config/db.yml <<'EOF'
+          spring:
+            datasource:
+              url: jdbc:postgresql://postgres:5432/erdtool
+              username: erdtool
+              password: erdtool
+          EOF
+
+      # 로컬 개발용 compose를 그대로 이용해 "실제로 전체 서비스가 뜨는지"를 검증합니다.
+      # 운영 DB를 건드리지 않기 위해 내부 postgres 컨테이너를 사용합니다.
+      - name: Start Full Stack With Docker Compose
+        run: docker compose up -d --build
+
+      # 서비스가 완전히 뜰 시간을 조금 줍니다.
+      - name: Wait For Containers To Stabilize
+        run: sleep 20
+
+      # 핵심 엔드포인트의 응답 여부를 확인해 최소 동작을 검증합니다.
+      # collaboration 서비스는 host port를 publish하지 않고 expose만 사용하므로
+      # runner 호스트에서 127.0.0.1:1234로 직접 확인하지 않고 컨테이너 내부 healthz를 조회합니다.
+      - name: Run Smoke Checks
+        run: |
+          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:8080/actuator/health
+          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:5173
+          docker compose exec -T collaboration wget -qO- http://127.0.0.1:1234/healthz
+          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:9090/-/healthy
+
+      # 실패 시 원인 파악을 위해 컨테이너 상태와 로그를 남깁니다.
+      - name: Show Container Status On Failure
+        if: failure()
+        run: docker compose ps
+
+      - name: Show Recent Container Logs On Failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      # CI 러너는 매번 새로 만들어지지만, 종료 시 정리까지 명시해두면
+      # 워크플로를 읽는 사람이 전체 수명주기를 이해하기 쉽습니다.
+      - name: Tear Down Compose Stack
+        if: always()
+        run: docker compose down -v

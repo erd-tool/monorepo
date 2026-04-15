@@ -5,6 +5,7 @@
 .omx
 .playwright-cli
 .playwright-mcp
+ops/config/db.yml
 node_modules
 build
 dist
