@@ -121,8 +121,10 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/prod_deploy_key
+          printf '%s' "${{ secrets.PROD_SSH_KEY }}" | tr -d '\r' > ~/.ssh/prod_deploy_key
           chmod 600 ~/.ssh/prod_deploy_key
+          # 저장된 키가 실제 개인키 형식인지 즉시 검증합니다.
+          ssh-keygen -y -f ~/.ssh/prod_deploy_key > /dev/null
 
       # 운영 서버의 host key를 미리 등록해 두면 StrictHostKeyChecking을 유지한 채 자동화가 가능합니다.
       - name: Register Production Host Key
@@ -130,23 +132,36 @@ jobs:
           ssh-keyscan -p "${{ vars.PROD_PORT }}" "${{ vars.PROD_HOST }}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      # 파일 업로드 전에 SSH 로그인 자체가 되는지 먼저 확인합니다.
+      # 여기서 실패하면 배포 파일 업로드나 compose 문제가 아니라 인증 설정 문제라고 바로 판단할 수 있습니다.
+      - name: Verify SSH Login
+        run: |
+          ssh \
+            -i ~/.ssh/prod_deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "${{ vars.PROD_PORT }}" \
+            "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
+            "echo ssh-login-ok"
+
       # 운영 서버에 필요한 compose/ops 파일만 tar로 묶어 보냅니다.
       # .env, db.yml 같은 민감한 운영 파일은 서버에 남겨두고 덮어쓰지 않습니다.
       - name: Upload Deployment Files
         run: |
           tar -czf deploy-bundle.tgz docker-compose.prod.yml ops
-          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
+          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
             "mkdir -p '${{ vars.PROD_APP_DIR }}'"
-          scp -i ~/.ssh/prod_deploy_key -P "${{ vars.PROD_PORT }}" deploy-bundle.tgz \
+          scp -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -P "${{ vars.PROD_PORT }}" deploy-bundle.tgz \
             "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}:${{ vars.PROD_APP_DIR }}/deploy-bundle.tgz"
-          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
+          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
             "cd '${{ vars.PROD_APP_DIR }}' && tar -xzf deploy-bundle.tgz && rm -f deploy-bundle.tgz"
 
       # 서버에서 GHCR 로그인 -> 최신 태그 pull -> compose 재기동 -> health check 순서로 배포합니다.
       # IMAGE_TAG는 .env를 수정하지 않고 명령 실행 시점에만 주입해서 롤백을 쉽게 만듭니다.
       - name: Deploy On Production Server
         run: |
-          ssh -i ~/.ssh/prod_deploy_key -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" <<EOF
+          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" <<EOF
           set -e
           cd "${{ vars.PROD_APP_DIR }}"
 
