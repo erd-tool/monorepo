@@ -1,3 +1,44 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
+    repositories {
+        // GitHub Actions에서 Plugin Portal 경유 artifact 해석이 불안정할 때를 대비해
+        // Maven Central을 우선 사용하고, Gradle metadata 조회는 생략합니다.
+        maven {
+            url = uri('https://repo.maven.apache.org/maven2')
+            metadataSources {
+                mavenPom()
+                artifact()
+            }
+        }
+        gradlePluginPortal()
+    }
+
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == 'org.springframework.boot') {
+                useModule("org.springframework.boot:spring-boot-gradle-plugin:${requested.version}")
+            }
+            if (requested.id.id == 'io.spring.dependency-management') {
+                useModule("io.spring.gradle:dependency-management-plugin:${requested.version}")
+            }
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven {
+            url = uri('https://repo.maven.apache.org/maven2')
+            metadataSources {
+                mavenPom()
+                artifact()
+            }
+        }
+    }
+}
+
 rootProject.name = 'erdcloud-msa'
 include 'common'
 include 'gateway-service'
