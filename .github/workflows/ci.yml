@@ -167,11 +167,13 @@ jobs:
         run: sleep 20
 
       # 핵심 엔드포인트의 응답 여부를 확인해 최소 동작을 검증합니다.
+      # collaboration 서비스는 host port를 publish하지 않고 expose만 사용하므로
+      # runner 호스트에서 127.0.0.1:1234로 직접 확인하지 않고 컨테이너 내부 healthz를 조회합니다.
       - name: Run Smoke Checks
         run: |
           curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:8080/actuator/health
           curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:5173
-          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:1234/healthz
+          docker compose exec -T collaboration wget -qO- http://127.0.0.1:1234/healthz
           curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:9090/-/healthy
 
       # 실패 시 원인 파악을 위해 컨테이너 상태와 로그를 남깁니다.
