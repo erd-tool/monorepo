@@ -184,7 +184,7 @@ jobs:
               grep '^DB_CONFIG_DIR=' .env || true
             fi
             echo "===== compose config volume mapping ====="
-            docker compose -f docker-compose.prod.yml config | grep '/config:ro' || true
+            docker compose -f docker-compose.prod.yml config | grep -A4 'target: /config' || true
             if [ -f "./ops/config/db.yml" ]; then
               echo "db.yml exists at ./ops/config/db.yml"
             elif [ -f "/opt/config/db.yml" ]; then
@@ -207,7 +207,17 @@ jobs:
           docker compose -f docker-compose.prod.yml ps
 
           # 게이트웨이 health check는 운영 배포 성공 여부를 빠르게 판단하는 핵심 기준입니다.
-          curl --fail --retry 20 --retry-delay 5 http://127.0.0.1:8080/actuator/health
+          for attempt in $(seq 1 20); do
+            if curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8080/actuator/health > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "gateway health check failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "gateway not ready yet (attempt ${attempt}/20), retrying in 5s..."
+            sleep 5
+          done
           EOF
 
       # 배포 결과로 어떤 태그가 올라갔는지 Actions 로그에 남깁니다.

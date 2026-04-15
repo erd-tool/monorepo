@@ -31,6 +31,12 @@ services:
         condition: service_healthy
       logstash:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 || exit 1"]
+      start_period: 20s
+      interval: 10s
+      timeout: 5s
+      retries: 10
     logging:
       driver: gelf
       options:
@@ -143,7 +149,7 @@ services:
     restart: unless-stopped
     depends_on:
       gateway-service:
-        condition: service_started
+        condition: service_healthy
       collaboration:
         condition: service_started
       logstash:
