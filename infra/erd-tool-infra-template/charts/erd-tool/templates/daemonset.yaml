@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "fluent-bit") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "fluent-bit") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "fluent-bit") | nindent 8 }}
+    spec:
+      serviceAccountName: default
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+      containers:
+        - name: fluent-bit
+          image: {{ .Values.fluentBit.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 2020
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/parsers.conf
+              subPath: parsers.conf
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: metrics
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: metrics
+          {{- with .Values.fluentBit.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

@@ -8,6 +8,7 @@ ERD Cloud 스타일의 웹 기반 협업 ERD 도구입니다. 현재는 `gateway
 - Frontend: `React`, `TypeScript`, `Vite`, `@xyflow/react`
 - Realtime: `Yjs`, `y-websocket`
 - Infra: `Docker`, `docker-compose`, `PostgreSQL`, `Redis`
+- Next Infra: `k3s`, `Helm`, `ArgoCD`, `ingress-nginx`, `cert-manager`
 - Metrics: `Spring Boot Actuator`, `Micrometer`, `Prometheus`, `Grafana`
 - Logs: `ELK (Elasticsearch, Logstash, Kibana)`
 
@@ -95,6 +96,14 @@ ELK 적재 확인:
 ```bash
 curl http://localhost:9200/_cat/indices?v
 ```
+
+## Kubernetes / GitOps
+
+- 운영 전환 템플릿은 [infra/erd-tool-infra-template/README.md](/Users/baekdonghyeon/my_playground/erd_tool/infra/erd-tool-infra-template/README.md)에 정리했습니다.
+- 앱 repo의 `CD Production` 워크플로는 더 이상 서버에 SSH 배포하지 않고, 별도 infra repo의 `environments/prod/values.yaml` 안 `global.imageTag`만 갱신합니다.
+- ArgoCD는 infra repo를 감시하고, 값이 바뀌면 Helm chart를 auto-sync 합니다.
+- Spring 서비스의 DB 설정은 계속 `/config/db.yml` 기반이며, Kubernetes에서는 Secret 볼륨으로 같은 파일 경로를 유지합니다.
+- 운영 Ingress는 프론트 정적 자산과 `/api`, `/ws/collaboration`을 분리 라우팅하므로 프론트 Nginx는 더 이상 내부 API 프록시를 담당하지 않습니다.
 
 ## Git Convention
 

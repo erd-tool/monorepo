@@ -1,0 +1,100 @@
+namespace:
+  create: true
+  name: erd-tool
+
+global:
+  host: erd.example.com
+  domainScheme: https
+  externalPort: ""
+  imageRegistry: ghcr.io
+  imageRepository: erd-tool/monorepo
+  imageTag: sha-change-me
+  imagePullSecretName: ghcr-pull-secret
+  ingressClassName: nginx
+  tlsSecretName: erd-tool-prod-tls
+  clusterIssuer: letsencrypt-prod
+  storageClassName: local-path
+  opsBasicAuthSecretName: erd-tool-ops-basic-auth
+  dbSecretName: erd-tool-db-config
+  jwtSecretName: erd-tool-jwt
+  grafanaAdminSecretName: grafana-admin
+  kibanaSecretName: kibana-secrets
+  dbConfigMountPath: /config
+
+frontend:
+  replicas: 2
+  resources: {}
+
+gateway:
+  replicas: 2
+  resources: {}
+
+auth:
+  replicas: 1
+  resources: {}
+
+team:
+  replicas: 1
+  resources: {}
+
+erd:
+  replicas: 1
+  resources: {}
+
+collaboration:
+  replicas: 1
+  resources: {}
+
+redis:
+  image: redis:7-alpine
+  storageSize: 1Gi
+  resources: {}
+
+elasticsearch:
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+  storageSize: 10Gi
+  javaOpts: -Xms512m -Xmx512m
+  resources: {}
+
+logstash:
+  image: docker.elastic.co/logstash/logstash:8.15.3
+  replicas: 1
+  httpPort: 8080
+  resources: {}
+
+fluentBit:
+  image: cr.fluentbit.io/fluent/fluent-bit:3.1.9
+  resources: {}
+
+prometheus:
+  image: prom/prometheus:v2.54.1
+  replicas: 1
+  storageSize: 5Gi
+  resources: {}
+
+grafana:
+  image: grafana/grafana:11.2.2
+  replicas: 1
+  storageSize: 2Gi
+  subPath: /grafana
+  resources: {}
+
+kibana:
+  image: docker.elastic.co/kibana/kibana:8.15.3
+  replicas: 1
+  subPath: /kibana
+  resources: {}
+
+ingress:
+  app:
+    enabled: true
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  ops:
+    enabled: true
+    authRealm: "ERD Tool Ops"
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"

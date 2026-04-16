@@ -1,0 +1,536 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "frontend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "frontend") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      containers:
+        - name: frontend
+          image: {{ include "erd-tool.appImage" (list . "frontend") | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          {{- with .Values.frontend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "gateway-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "gateway-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "gateway-service") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      containers:
+        - name: gateway-service
+          image: {{ include "erd-tool.appImage" (list . "gateway-service") | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AUTH_SERVICE_URL
+              value: http://auth-service:8081
+            - name: TEAM_SERVICE_URL
+              value: http://team-service:8082
+            - name: ERD_SERVICE_URL
+              value: http://erd-service:8083
+            - name: COLLAB_SERVICE_URL
+              value: ws://collaboration:1234
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.jwtSecretName }}
+                  key: JWT_SECRET
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          {{- with .Values.gateway.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "auth-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.auth.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "auth-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "auth-service") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: db-config
+          secret:
+            secretName: {{ .Values.global.dbSecretName }}
+            items:
+              - key: db.yml
+                path: db.yml
+      containers:
+        - name: auth-service
+          image: {{ include "erd-tool.appImage" (list . "auth-service") | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CONFIG_IMPORT
+              value: optional:file:/config/db.yml
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.jwtSecretName }}
+                  key: JWT_SECRET
+          ports:
+            - name: http
+              containerPort: 8081
+          volumeMounts:
+            - name: db-config
+              mountPath: {{ .Values.global.dbConfigMountPath }}
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          {{- with .Values.auth.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: team-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "team-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.team.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "team-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "team-service") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: db-config
+          secret:
+            secretName: {{ .Values.global.dbSecretName }}
+            items:
+              - key: db.yml
+                path: db.yml
+      containers:
+        - name: team-service
+          image: {{ include "erd-tool.appImage" (list . "team-service") | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CONFIG_IMPORT
+              value: optional:file:/config/db.yml
+            - name: AUTH_SERVICE_URL
+              value: http://auth-service:8081
+            - name: ERD_SERVICE_URL
+              value: http://erd-service:8083
+          ports:
+            - name: http
+              containerPort: 8082
+          volumeMounts:
+            - name: db-config
+              mountPath: {{ .Values.global.dbConfigMountPath }}
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          {{- with .Values.team.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erd-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "erd-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.erd.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "erd-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "erd-service") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: db-config
+          secret:
+            secretName: {{ .Values.global.dbSecretName }}
+            items:
+              - key: db.yml
+                path: db.yml
+      containers:
+        - name: erd-service
+          image: {{ include "erd-tool.appImage" (list . "erd-service") | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CONFIG_IMPORT
+              value: optional:file:/config/db.yml
+            - name: TEAM_SERVICE_URL
+              value: http://team-service:8082
+          ports:
+            - name: http
+              containerPort: 8083
+          volumeMounts:
+            - name: db-config
+              mountPath: {{ .Values.global.dbConfigMountPath }}
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+          {{- with .Values.erd.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collaboration
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "collaboration") | nindent 4 }}
+spec:
+  replicas: {{ .Values.collaboration.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "collaboration") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "collaboration") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      containers:
+        - name: collaboration
+          image: {{ include "erd-tool.appImage" (list . "collaboration") | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ERD_SERVICE_URL
+              value: http://erd-service:8083
+          ports:
+            - name: http
+              containerPort: 1234
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          {{- with .Values.collaboration.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "logstash") | nindent 4 }}
+spec:
+  replicas: {{ .Values.logstash.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "logstash") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "logstash") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: logstash-pipeline
+          configMap:
+            name: logstash-pipeline
+      containers:
+        - name: logstash
+          image: {{ .Values.logstash.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LS_JAVA_OPTS
+              value: -Xms256m -Xmx256m
+          ports:
+            - name: http
+              containerPort: {{ .Values.logstash.httpPort }}
+          volumeMounts:
+            - name: logstash-pipeline
+              mountPath: /usr/share/logstash/pipeline/logstash.conf
+              subPath: logstash.conf
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+          {{- with .Values.logstash.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "prometheus") | nindent 4 }}
+spec:
+  replicas: {{ .Values.prometheus.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "prometheus") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "prometheus") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+      containers:
+        - name: prometheus
+          image: {{ .Values.prometheus.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+            - name: prometheus-data
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+          {{- with .Values.prometheus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "grafana") | nindent 4 }}
+spec:
+  replicas: {{ .Values.grafana.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "grafana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "grafana") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
+      containers:
+        - name: grafana
+          image: {{ .Values.grafana.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.grafanaAdminSecretName }}
+                  key: GF_SECURITY_ADMIN_USER
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.grafanaAdminSecretName }}
+                  key: GF_SECURITY_ADMIN_PASSWORD
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: {{ printf "%s%s" (include "erd-tool.externalOrigin" .) .Values.grafana.subPath | quote }}
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+          {{- with .Values.grafana.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "kibana") | nindent 4 }}
+spec:
+  replicas: {{ .Values.kibana.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erd-tool.componentSelectorLabels" (list . "kibana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "erd-tool.componentSelectorLabels" (list . "kibana") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      containers:
+        - name: kibana
+          image: {{ .Values.kibana.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch:9200
+            - name: SERVER_BASEPATH
+              value: {{ .Values.kibana.subPath | quote }}
+            - name: SERVER_REWRITEBASEPATH
+              value: "true"
+            - name: SERVER_PUBLICBASEURL
+              value: {{ printf "%s%s" (include "erd-tool.externalOrigin" .) .Values.kibana.subPath | quote }}
+            - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.kibanaSecretName }}
+                  key: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+          ports:
+            - name: http
+              containerPort: 5601
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+          {{- with .Values.kibana.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

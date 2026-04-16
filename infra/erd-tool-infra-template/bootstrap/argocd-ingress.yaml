@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: __ARGOCD_BASIC_AUTH_SECRET__
+    nginx.ingress.kubernetes.io/auth-realm: "ERD Tool ArgoCD"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      if ($scheme = http) {
+        return 308 https://$host:__PUBLIC_HTTPS_PORT_IN_REDIRECT__$request_uri;
+      }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - __PUBLIC_HOST__
+      secretName: __APP_TLS_SECRET__
+  rules:
+    - host: __PUBLIC_HOST__
+      http:
+        paths:
+          - path: /argocd
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

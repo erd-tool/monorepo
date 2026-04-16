@@ -1,0 +1,40 @@
+global:
+  host: erd.example.com
+  domainScheme: https
+  externalPort: ""
+  imageRegistry: ghcr.io
+  imageRepository: erd-tool/monorepo
+  imageTag: sha-change-me
+  tlsSecretName: erd-tool-prod-tls
+  clusterIssuer: letsencrypt-prod
+  storageClassName: local-path
+
+frontend:
+  replicas: 2
+
+gateway:
+  replicas: 2
+
+auth:
+  replicas: 1
+
+team:
+  replicas: 1
+
+erd:
+  replicas: 1
+
+collaboration:
+  replicas: 1
+
+redis:
+  storageSize: 2Gi
+
+elasticsearch:
+  storageSize: 20Gi
+
+prometheus:
+  storageSize: 10Gi
+
+grafana:
+  storageSize: 5Gi
