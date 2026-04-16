@@ -1,13 +1,6 @@
 # 운영 배포용 compose 파일입니다.
 # 레지스트리에서 미리 빌드된 이미지를 내려받아 사용하며, 데이터베이스는 이 스택 외부에 있다고 가정합니다.
 services:
-  # 협업 서비스에서 사용하는 공용 캐시 및 pub/sub 용도입니다.
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis-data:/data
-
   # 외부 클라이언트가 접근하는 공개 API 게이트웨이입니다.
   gateway-service:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-erd-tool/monorepo}/gateway-service:${IMAGE_TAG:-latest}
@@ -127,8 +120,6 @@ services:
     expose:
       - "1234"
     depends_on:
-      redis:
-        condition: service_started
       logstash:
         condition: service_started
     healthcheck:
@@ -247,7 +238,6 @@ services:
         condition: service_started
 
 volumes:
-  redis-data:
   elasticsearch-data:
   prometheus-data:
   grafana-data:

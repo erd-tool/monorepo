@@ -1,60 +1,6 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: redis
-  namespace: {{ .Values.namespace.name }}
-  labels:
-    {{- include "erd-tool.componentLabels" (list . "redis") | nindent 4 }}
-spec:
-  serviceName: redis-headless
-  replicas: 1
-  selector:
-    matchLabels:
-      {{- include "erd-tool.componentSelectorLabels" (list . "redis") | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "erd-tool.componentSelectorLabels" (list . "redis") | nindent 8 }}
-    spec:
-      imagePullSecrets:
-        - name: {{ .Values.global.imagePullSecretName }}
-      containers:
-        - name: redis
-          image: {{ .Values.redis.image | quote }}
-          imagePullPolicy: IfNotPresent
-          args:
-            - --appendonly
-            - "yes"
-          ports:
-            - name: redis
-              containerPort: 6379
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-          readinessProbe:
-            tcpSocket:
-              port: redis
-          livenessProbe:
-            tcpSocket:
-              port: redis
-          {{- with .Values.redis.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-  volumeClaimTemplates:
-    - metadata:
-        name: redis-data
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        storageClassName: {{ .Values.global.storageClassName }}
-        resources:
-          requests:
-            storage: {{ .Values.redis.storageSize }}
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
   name: elasticsearch
   namespace: {{ .Values.namespace.name }}
   labels:

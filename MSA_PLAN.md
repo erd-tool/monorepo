@@ -196,7 +196,7 @@
 ### Phase 7. collaboration-service 연계 고도화
 
 - 협업 서버의 인증 연계 방식 정리
-- 필요 시 Broker 또는 Redis 기반 다중 인스턴스 확장 검토
+- 필요 시 Broker 또는 별도 pub/sub 계층 기반 다중 인스턴스 확장 검토
 
 ## 9. 현재 프로젝트에 맞는 우선순위
 

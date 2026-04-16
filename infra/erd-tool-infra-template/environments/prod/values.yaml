@@ -27,9 +27,6 @@ erd:
 collaboration:
   replicas: 1
 
-redis:
-  storageSize: 2Gi
-
 elasticsearch:
   storageSize: 20Gi
 

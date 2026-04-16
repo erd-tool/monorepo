@@ -7,7 +7,7 @@ ERD Cloud 스타일의 웹 기반 협업 ERD 도구입니다. 현재는 `gateway
 - Backend: `Java 21`, `Spring Boot`, `Spring Security`, `Spring Data JPA`, `Spring HATEOAS`, `Gradle`
 - Frontend: `React`, `TypeScript`, `Vite`, `@xyflow/react`
 - Realtime: `Yjs`, `y-websocket`
-- Infra: `Docker`, `docker-compose`, `PostgreSQL`, `Redis`
+- Infra: `Docker`, `docker-compose`, `PostgreSQL`
 - Next Infra: `k3s`, `Helm`, `ArgoCD`, `ingress-nginx`, `cert-manager`
 - Metrics: `Spring Boot Actuator`, `Micrometer`, `Prometheus`, `Grafana`
 - Logs: `ELK (Elasticsearch, Logstash, Kibana)`
