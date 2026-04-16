@@ -1,0 +1,6 @@
+apiVersion: v2
+name: erd-tool
+description: Single-node k3s deployment for ERD Tool and its observability stack
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

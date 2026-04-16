@@ -1,0 +1,11 @@
+configs:
+  params:
+    server.basehref: /argocd
+    server.rootpath: /argocd
+    server.insecure: "true"
+
+server:
+  service:
+    type: ClusterIP
+  extraArgs:
+    - --insecure

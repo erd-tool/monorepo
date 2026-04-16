@@ -1,0 +1,97 @@
+{{- if .Values.ingress.app.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: erd-tool-app
+  namespace: {{ .Values.namespace.name }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.global.clusterIssuer | quote }}
+    {{- if include "erd-tool.useCustomHttpsPort" . }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      if ($scheme = http) {
+        return 308 https://$host:{{ .Values.global.externalPort }}$request_uri;
+      }
+    {{- end }}
+    {{- with .Values.ingress.app.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.global.ingressClassName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.host }}
+      secretName: {{ .Values.global.tlsSecretName }}
+  rules:
+    - host: {{ .Values.global.host }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 8080
+          - path: /ws/collaboration
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+{{- end }}
+{{- if .Values.ingress.ops.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: erd-tool-ops
+  namespace: {{ .Values.namespace.name }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.global.clusterIssuer | quote }}
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: {{ .Values.global.opsBasicAuthSecretName | quote }}
+    nginx.ingress.kubernetes.io/auth-realm: {{ .Values.ingress.ops.authRealm | quote }}
+    {{- if include "erd-tool.useCustomHttpsPort" . }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      if ($scheme = http) {
+        return 308 https://$host:{{ .Values.global.externalPort }}$request_uri;
+      }
+    {{- end }}
+    {{- with .Values.ingress.ops.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.global.ingressClassName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.host }}
+      secretName: {{ .Values.global.tlsSecretName }}
+  rules:
+    - host: {{ .Values.global.host }}
+      http:
+        paths:
+          - path: {{ .Values.grafana.subPath }}
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+          - path: {{ .Values.kibana.subPath }}
+            pathType: Prefix
+            backend:
+              service:
+                name: kibana
+                port:
+                  number: 5601
+{{- end }}

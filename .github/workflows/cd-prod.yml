@@ -1,35 +1,24 @@
 name: CD Production
 
-# 이 워크플로는 main 브랜치에 반영된 결과를 운영 환경으로 배포합니다.
-# 흐름은 "이미지 빌드/푸시 -> 운영 서버에 배포 파일 업로드 -> SSH 접속 후 compose 재기동" 순서입니다.
+# 이 워크플로는 main 브랜치 반영 결과를 GitOps 방식으로 운영에 승격합니다.
+# 흐름은 "이미지 빌드/푸시 -> infra repo values 갱신 -> ArgoCD auto-sync" 순서입니다.
 on:
-  # main에 머지되면 자동 배포를 수행합니다.
   push:
     branches:
       - main
-
-  # 필요할 때 GitHub UI에서 수동으로도 재배포할 수 있도록 열어둡니다.
   workflow_dispatch:
 
-# 운영 배포는 동시에 두 번 돌지 않게 직렬화합니다.
-# 배포 도중 이전 실행을 끊어버리면 서버 상태가 꼬일 수 있으므로 cancel-in-progress는 false로 둡니다.
 concurrency:
   group: cd-production
   cancel-in-progress: false
 
-# GHCR에 이미지를 올려야 하므로 packages: write 권한이 필요합니다.
 permissions:
   contents: read
   packages: write
 
 env:
-  # GHCR 기본 레지스트리 주소입니다.
   REGISTRY: ghcr.io
-
-  # github.repository 값은 "erd-tool/monorepo" 형태로 들어옵니다.
   IMAGE_REPOSITORY: ${{ github.repository }}
-
-  # latest 외에 롤백 가능한 불변 태그도 함께 남기기 위해 커밋 SHA 기반 태그를 사용합니다.
   IMAGE_TAG: sha-${{ github.sha }}
 
 jobs:
@@ -60,7 +49,7 @@ jobs:
           - service: frontend
             context: ./frontend
             dockerfile: ./frontend/Dockerfile
-            # 현재 프론트는 Nginx 프록시 기반이라 운영 이미지 빌드 시 build arg를 비워도 동작합니다.
+            # 운영 진입은 ingress가 맡으므로 프론트 이미지는 정적 자산만 서빙하면 됩니다.
             build-args: |
               VITE_API_BASE_URL=
               VITE_COLLAB_URL=
@@ -69,8 +58,6 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      # GITHUB_TOKEN으로 GHCR에 로그인합니다.
-      # 저장소 Actions 권한이 "Read and write" 여야 정상 push 됩니다.
       - name: Login To GHCR
         uses: docker/login-action@v3
         with:
@@ -78,12 +65,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # buildx를 사용하면 최신 Docker BuildKit 기능과 캐시를 활용할 수 있습니다.
       - name: Set Up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 서비스별 이미지를 빌드하고 GHCR에 push 합니다.
-      # latest와 sha 태그를 같이 남겨두면 "현재 최신 배포"와 "정확한 롤백 지점"을 모두 확보할 수 있습니다.
       - name: Build And Push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
@@ -97,132 +81,81 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  deploy-to-production:
-    name: Deploy To Production
+  promote-production:
+    name: Promote Production Values
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     needs:
       - build-and-push
 
-    # production Environment에 연결하면 승인, secret, variable 범위를 이 job으로 제한할 수 있습니다.
     environment:
       name: production
 
-    # 수동 실행이든 push 실행이든, 실제 배포는 main 브랜치 기준에서만 수행합니다.
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
-
-      # GitHub runner에서 사용할 SSH 키를 임시 파일로 생성합니다.
-      # PROD_SSH_KEY에는 아래 둘 중 하나를 넣을 수 있게 처리합니다.
-      # 1) 원본 OpenSSH 개인키 전체
-      # 2) 줄바꿈 없는 base64 인코딩 개인키
-      - name: Prepare SSH Key
+      - name: Resolve Infra Repo Settings
+        id: infra
+        env:
+          INFRA_REPO: ${{ vars.INFRA_REPO }}
+          INFRA_REPO_REF: ${{ vars.INFRA_REPO_REF }}
+          INFRA_VALUES_FILE: ${{ vars.INFRA_VALUES_FILE }}
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          : "${INFRA_REPO:?Set repository variable INFRA_REPO to the separate infra repository (owner/name).}"
+          echo "repo=$INFRA_REPO" >> "$GITHUB_OUTPUT"
+          echo "ref=${INFRA_REPO_REF:-main}" >> "$GITHUB_OUTPUT"
+          echo "values_file=${INFRA_VALUES_FILE:-environments/prod/values.yaml}" >> "$GITHUB_OUTPUT"
 
-          if printf '%s' "${{ secrets.PROD_SSH_KEY }}" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
-            printf '%s' "${{ secrets.PROD_SSH_KEY }}" | tr -d '\r' > ~/.ssh/prod_deploy_key
-          else
-            printf '%s' "${{ secrets.PROD_SSH_KEY }}" | tr -d '\r\n ' | base64 --decode > ~/.ssh/prod_deploy_key
+      - name: Checkout Infra Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.infra.outputs.repo }}
+          ref: ${{ steps.infra.outputs.ref }}
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+          path: infra-repo
+
+      - name: Update Production Image Tag
+        working-directory: infra-repo
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          INFRA_VALUES_FILE: ${{ steps.infra.outputs.values_file }}
+        run: |
+          : "${INFRA_VALUES_FILE:?Missing values file path.}"
+          test -f "$INFRA_VALUES_FILE"
+
+          if ! grep -qE '^  imageTag:' "$INFRA_VALUES_FILE"; then
+            echo "expected global.imageTag key not found in $INFRA_VALUES_FILE"
+            exit 1
           fi
 
-          chmod 600 ~/.ssh/prod_deploy_key
-          # 저장된 키가 실제 개인키 형식인지 즉시 검증합니다.
-          ssh-keygen -y -f ~/.ssh/prod_deploy_key > /dev/null
+          sed -i.bak -E "s#^(  imageTag: ).*#\\1${IMAGE_TAG}#" "$INFRA_VALUES_FILE"
+          rm -f "${INFRA_VALUES_FILE}.bak"
+          grep -nE '^global:|^  imageTag:' "$INFRA_VALUES_FILE"
 
-      # 운영 서버의 host key를 미리 등록해 두면 StrictHostKeyChecking을 유지한 채 자동화가 가능합니다.
-      - name: Register Production Host Key
+      - name: Commit Promotion
+        working-directory: infra-repo
+        env:
+          INFRA_VALUES_FILE: ${{ steps.infra.outputs.values_file }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
-          ssh-keyscan -p "${{ vars.PROD_PORT }}" "${{ vars.PROD_HOST }}" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          if git diff --quiet -- "$INFRA_VALUES_FILE"; then
+            echo "promotion file already points to ${SOURCE_SHA}"
+            exit 0
+          fi
 
-      # 파일 업로드 전에 SSH 로그인 자체가 되는지 먼저 확인합니다.
-      # 여기서 실패하면 배포 파일 업로드나 compose 문제가 아니라 인증 설정 문제라고 바로 판단할 수 있습니다.
-      - name: Verify SSH Login
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$INFRA_VALUES_FILE"
+          git commit -m "chore(prod): promote ${SOURCE_REPOSITORY}@${SOURCE_SHA}"
+
+      - name: Push Promotion Commit
+        working-directory: infra-repo
+        run: git push origin HEAD:${{ steps.infra.outputs.ref }}
+
+      - name: Print Promotion Summary
         run: |
-          ssh \
-            -i ~/.ssh/prod_deploy_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes \
-            -p "${{ vars.PROD_PORT }}" \
-            "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
-            "echo ssh-login-ok"
-      # 운영 서버에 필요한 compose/ops 파일만 tar로 묶어 보냅니다.
-      # .env, db.yml 같은 민감한 운영 파일은 서버에 남겨두고 덮어쓰지 않습니다.
-      - name: Upload Deployment Files
-        run: |
-          tar -czf deploy-bundle.tgz docker-compose.prod.yml ops
-          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
-            "mkdir -p '${{ vars.PROD_APP_DIR }}'"
-          scp -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -P "${{ vars.PROD_PORT }}" deploy-bundle.tgz \
-            "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}:${{ vars.PROD_APP_DIR }}/deploy-bundle.tgz"
-          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" \
-            "cd '${{ vars.PROD_APP_DIR }}' && tar -xzf deploy-bundle.tgz && rm -f deploy-bundle.tgz"
-
-      # 서버에서 GHCR 로그인 -> 최신 태그 pull -> compose 재기동 -> health check 순서로 배포합니다.
-      # IMAGE_TAG는 .env를 수정하지 않고 명령 실행 시점에만 주입해서 롤백을 쉽게 만듭니다.
-      - name: Deploy On Production Server
-        run: |
-          ssh -i ~/.ssh/prod_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${{ vars.PROD_PORT }}" "${{ secrets.PROD_USER }}@${{ vars.PROD_HOST }}" <<EOF
-          set -e
-          cd "${{ vars.PROD_APP_DIR }}"
-
-          dump_diagnostics() {
-            echo "===== docker compose ps ====="
-            docker compose -f docker-compose.prod.yml ps || true
-            echo "===== spring service logs ====="
-            docker compose -f docker-compose.prod.yml logs --tail=200 auth-service team-service erd-service gateway-service || true
-            echo "===== collaboration logs ====="
-            docker compose -f docker-compose.prod.yml logs --tail=100 collaboration || true
-            echo "===== db config presence ====="
-            if [ -f ".env" ]; then
-              grep '^DB_CONFIG_DIR=' .env || true
-            fi
-            echo "===== compose config volume mapping ====="
-            docker compose -f docker-compose.prod.yml config | grep -A4 'target: /config' || true
-            if [ -f "./ops/config/db.yml" ]; then
-              echo "db.yml exists at ./ops/config/db.yml"
-            elif [ -f "/opt/config/db.yml" ]; then
-              echo "db.yml exists at /opt/config/db.yml"
-            elif [ -f "/opt/erd-tool/config/db.yml" ]; then
-              echo "db.yml exists at /opt/erd-tool/config/db.yml"
-            else
-              echo "db.yml not found from deployment script context"
-            fi
-          }
-
-          trap 'dump_diagnostics' ERR
-
-          echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ${{ env.REGISTRY }} \
-            -u "${{ vars.GHCR_READ_USERNAME }}" --password-stdin
-
-          IMAGE_TAG="${{ env.IMAGE_TAG }}" docker compose -f docker-compose.prod.yml pull
-          IMAGE_TAG="${{ env.IMAGE_TAG }}" docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-          docker compose -f docker-compose.prod.yml ps
-
-          # 게이트웨이 health check는 운영 배포 성공 여부를 빠르게 판단하는 핵심 기준입니다.
-          for attempt in \$(seq 1 20); do
-            if curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8080/actuator/health > /dev/null; then
-              break
-            fi
-            if [ "\$attempt" -eq 20 ]; then
-              echo "gateway health check failed after \${attempt} attempts"
-              exit 1
-            fi
-            echo "gateway not ready yet (attempt \${attempt}/20), retrying in 5s..."
-            sleep 5
-          done
-          EOF
-
-      # 배포 결과로 어떤 태그가 올라갔는지 Actions 로그에 남깁니다.
-      - name: Print Deployment Summary
-        run: |
-          echo "배포 완료"
-          echo "서버: ${{ vars.PROD_HOST }}"
+          echo "promotion commit pushed"
+          echo "infra repo: ${{ steps.infra.outputs.repo }}"
+          echo "infra ref: ${{ steps.infra.outputs.ref }}"
           echo "이미지 태그: ${{ env.IMAGE_TAG }}"

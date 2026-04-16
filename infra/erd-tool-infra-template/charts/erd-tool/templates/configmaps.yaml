@@ -1,0 +1,405 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "prometheus") | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: gateway-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["gateway-service:8080"]
+
+      - job_name: auth-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["auth-service:8081"]
+
+      - job_name: team-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["team-service:8082"]
+
+      - job_name: erd-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["erd-service:8083"]
+
+      - job_name: collaboration
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["collaboration:1234"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "logstash") | nindent 4 }}
+data:
+  logstash.conf: |
+    input {
+      http {
+        port => {{ .Values.logstash.httpPort }}
+        codec => json
+        additional_codecs => {
+          "application/json" => "json"
+        }
+      }
+    }
+
+    filter {
+      if [kubernetes][namespace_name] and [kubernetes][namespace_name] != "{{ .Values.namespace.name }}" {
+        drop { }
+      }
+
+      if ![service] and [kubernetes][container_name] {
+        mutate {
+          add_field => { "service" => "%{[kubernetes][container_name]}" }
+        }
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch:9200"]
+        index => "erd-tool-%{+YYYY.MM.dd}"
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "fluent-bit") | nindent 4 }}
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         1
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        Parser            cri
+        Tag               kube.*
+        Refresh_Interval  5
+        Mem_Buf_Limit     20MB
+        Skip_Long_Lines   On
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+
+    [OUTPUT]
+        Name             http
+        Match            kube.*
+        Host             logstash
+        Port             {{ .Values.logstash.httpPort }}
+        URI              /fluent-bit
+        Format           json
+        Json_Date_Key    @timestamp
+        Json_Date_Format iso8601
+  parsers.conf: |
+    [PARSER]
+        Name         cri
+        Format       regex
+        Regex        ^(?<time>.+) (?<stream>stdout|stderr) (?<logtag>P|F) (?<log>.*)$
+        Time_Key     time
+        Time_Format  %Y-%m-%dT%H:%M:%S.%L%z
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "grafana") | nindent 4 }}
+data:
+  prometheus.yml: |
+    apiVersion: 1
+
+    datasources:
+      - name: Prometheus
+        uid: erdtool-prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "grafana") | nindent 4 }}
+data:
+  dashboards.yml: |
+    apiVersion: 1
+
+    providers:
+      - name: erdtool-observability
+        orgId: 1
+        folder: ERD Tool
+        type: file
+        disableDeletion: false
+        allowUiUpdates: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "grafana") | nindent 4 }}
+data:
+  erdtool-observability.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": false,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "erdtool-prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 5
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.2.2",
+          "targets": [
+            {
+              "expr": "sum(up{job=~\"gateway-service|auth-service|team-service|erd-service|collaboration\"})",
+              "refId": "A"
+            }
+          ],
+          "title": "Healthy Targets",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "erdtool-prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 8,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "pluginVersion": "11.2.2",
+          "targets": [
+            {
+              "expr": "up{job=~\"gateway-service|auth-service|team-service|erd-service|collaboration\"}",
+              "legendFormat": {{ "{{job}}" | quote }},
+              "refId": "A"
+            }
+          ],
+          "title": "Service Availability",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "erdtool-prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 3,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "pluginVersion": "11.2.2",
+          "targets": [
+            {
+              "expr": "sum by (job) (jvm_memory_used_bytes{area=\"heap\"})",
+              "legendFormat": {{ "{{job}}" | quote }},
+              "refId": "A"
+            }
+          ],
+          "title": "JVM Heap Used",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "erdtool-prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "pluginVersion": "11.2.2",
+          "targets": [
+            {
+              "expr": "sum by (job) (rate(http_server_requests_seconds_count[5m]))",
+              "legendFormat": {{ "{{job}}" | quote }},
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP Requests / sec",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "style": "dark",
+      "tags": [
+        "erd-tool",
+        "kubernetes"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "ERD Tool Observability",
+      "version": 1
+    }

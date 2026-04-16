@@ -1,0 +1,223 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "frontend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "frontend") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "gateway-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "gateway-service") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "auth-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "auth-service") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: team-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "team-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "team-service") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: erd-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "erd-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "erd-service") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collaboration
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "collaboration") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "collaboration") | nindent 4 }}
+  ports:
+    - name: http
+      port: 1234
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "redis") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-headless
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "elasticsearch") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "elasticsearch") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "elasticsearch") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "elasticsearch") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "logstash") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "logstash") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.logstash.httpPort }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "prometheus") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "prometheus") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "grafana") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "grafana") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "erd-tool.componentLabels" (list . "kibana") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "erd-tool.componentSelectorLabels" (list . "kibana") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5601
+      targetPort: http
