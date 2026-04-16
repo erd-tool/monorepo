@@ -14,7 +14,7 @@
 - `backend`: Spring Boot 기반 인증, 팀, ERD 문서 관리 API
 - `frontend`: React + React Flow 기반 ERD 편집 UI
 - `collaboration`: Yjs WebSocket 기반 실시간 동기화 서버
-- `docker-compose.yml`: PostgreSQL, Redis, Backend, Frontend, Collaboration 통합 실행
+- `docker-compose.yml`: PostgreSQL, Backend, Frontend, Collaboration 통합 실행
 
 ## 2. 개발 목표와 MVP 플랜
 
@@ -69,7 +69,7 @@
 - 공개 문서 공유 UX
 - 초대 수락 화면 및 팀 운영 기능 보강
 - SQL export 정합성 강화
-- Redis 활용 고도화 및 운영 안정화
+- 협업 서버 운영 안정화 및 확장 구조 정리
 
 ## 3. 요구 사항 정리
 
@@ -158,7 +158,7 @@
 ### 4.4 인프라 구성
 
 - Dockerfile 분리 구성
-- `docker-compose.yml`로 DB, 캐시, API, 협업 서버, 프론트 통합 실행 가능
+- `docker-compose.yml`로 DB, API, 협업 서버, 프론트 통합 실행 가능
 - 환경 변수 기반 포트/DB/JWT 설정 가능
 
 ## 5. 진행 상황 요약
@@ -208,11 +208,11 @@
 - 현재 구조에서는 백엔드 export 결과가 프론트 문서 구조와 완전히 일치하지 않을 수 있음
 - 프론트에서 별도 DDL 생성 fallback을 가지고 있어 사용자 경험은 유지되지만, 서버 기준 SQL 생성 로직은 정리 필요
 
-### 6.5 협업 서버의 Redis 활용은 아직 제한적
+### 6.5 협업 서버는 현재 단일 인스턴스 기준으로 운영됨
 
-- 인프라에는 Redis가 포함되어 있음
-- 현재 협업 서버 코드에서는 Redis를 직접 사용하는 로직이 보이지 않음
-- 향후 세션 확장, 문서 브로드캐스트 최적화, 멀티 인스턴스 대응 시 활용 가능
+- 현재 협업 서버는 Yjs WebSocket 단일 인스턴스 기준으로 동작함
+- 별도 pub/sub 저장소 의존성은 제거되어 있으며, 코드에서도 외부 브로드캐스트 저장소를 사용하지 않음
+- 향후 멀티 인스턴스 확장이 필요해지면 별도 pub/sub 계층을 다시 검토하면 됨
 
 ### 6.6 팀 문서 권한 정책은 아직 단순함
 
@@ -241,7 +241,7 @@
 
 ### 우선순위 4. 운영/확장성
 
-- Redis 실사용 구조 반영
+- 협업 서버 멀티 인스턴스 확장 전략 수립
 - 문서 변경 이력 또는 버전 관리
 - 테스트 코드 확대
 - 배포 환경 설정 분리

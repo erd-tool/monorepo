@@ -7,7 +7,7 @@
 - [ ] `docker compose build` 실행
 - [ ] `docker compose up -d` 실행
 - [ ] `docker compose ps` 결과에서 주요 서비스가 `Up` 상태인지 확인
-  - 대상: `frontend`, `gateway-service`, `auth-service`, `team-service`, `erd-service`, `collaboration`, `postgres`, `redis`, `prometheus`, `grafana`, `elasticsearch`, `logstash`, `kibana`
+  - 대상: `frontend`, `gateway-service`, `auth-service`, `team-service`, `erd-service`, `collaboration`, `postgres`, `prometheus`, `grafana`, `elasticsearch`, `logstash`, `kibana`
 - [ ] 브라우저에서 아래 주소 접속 확인
   - Frontend: `http://127.0.0.1:5173`
   - Gateway: `http://127.0.0.1:8080/actuator/health`
