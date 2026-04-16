@@ -516,6 +516,12 @@ export function EditorPage() {
     setSelectedEntityId(null);
   }
 
+  function clearCanvasSelection() {
+    setSelectedEntityId(null);
+    setSelectedRelationshipId(null);
+    setSelectedNoteId(null);
+  }
+
   useEffect(() => {
     if (!erdId) return;
     setActiveErd(erdId);
@@ -913,6 +919,8 @@ export function EditorPage() {
     if (readOnlyView) return;
     if (!relationshipDraft.active) {
       setSelectedEntityId(nodeId);
+      setSelectedRelationshipId(null);
+      setSelectedNoteId(null);
       return;
     }
 
@@ -1197,6 +1205,8 @@ export function EditorPage() {
                   if (window.performance.now() < suppressRelationshipSelectionUntilRef.current) {
                     return;
                   }
+                  setSelectedEntityId(null);
+                  setSelectedNoteId(null);
                   setSelectedRelationshipId(edge.id);
                 }}
                 onPaneClick={() => {
