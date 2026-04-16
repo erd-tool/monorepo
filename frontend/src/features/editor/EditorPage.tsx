@@ -514,10 +514,6 @@ export function EditorPage() {
 
   function clearCanvasSelection() {
     setSelectedEntityId(null);
-  }
-
-  function clearCanvasSelection() {
-    setSelectedEntityId(null);
     setSelectedRelationshipId(null);
     setSelectedNoteId(null);
   }
