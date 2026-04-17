@@ -1,11 +1,10 @@
-name: CD Production
+name: "[Reference Only] CD Production"
 
 # 이 워크플로는 main 브랜치 반영 결과를 GitOps 방식으로 운영에 승격합니다.
 # 흐름은 "이미지 빌드/푸시 -> infra repo values 갱신 -> ArgoCD auto-sync" 순서입니다.
 on:
-  push:
-    branches:
-      - main
+  # 운영 배포 기준은 개별 repo와 infra repo로 이동했으므로
+  # 이 monorepo의 CD는 자동 실행하지 않습니다.
   workflow_dispatch:
 
 concurrency:

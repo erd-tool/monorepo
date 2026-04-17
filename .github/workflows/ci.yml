@@ -1,19 +1,10 @@
-name: CI
+name: "[Reference Only] CI"
 
 # 이 워크플로는 "코드가 최소한 빌드/테스트 가능한 상태인지"를 검증합니다.
 # 운영 배포는 여기서 하지 않고, 별도의 CD 워크플로에서 수행합니다.
 on:
-  # main 브랜치로 들어오는 PR은 반드시 CI를 거치게 합니다.
-  pull_request:
-    branches:
-      - main
-
-  # main에 직접 push 되었을 때도 동일한 검증을 수행합니다.
-  push:
-    branches:
-      - main
-
-  # GitHub UI에서 수동 실행할 수 있도록 열어둡니다.
+  # 현재 canonical repo는 erd-tool-main 및 각 sub repo이므로
+  # 이 monorepo의 CI는 reference 확인용 수동 실행만 허용합니다.
   workflow_dispatch:
 
 # 같은 브랜치에서 연속 push가 발생하면 이전 실행을 취소해서 리소스를 아낍니다.

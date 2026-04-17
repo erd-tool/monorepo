@@ -1,5 +1,9 @@
 # Kubernetes + GitOps 전환 가이드
 
+> [!IMPORTANT]
+> 이 문서는 reference-only monorepo 기준으로 남겨둔 전환 기록입니다.
+> 현재 canonical entrypoint 는 [`erd-tool-main`](https://github.com/erd-tool/erd-tool-main) 이며, 실제 변경은 연결된 sub repo에서 진행합니다.
+
 이 저장소는 이제 두 축으로 나뉩니다.
 
 - 앱 repo: Java/Spring, React, collaboration 서비스 코드와 이미지 빌드

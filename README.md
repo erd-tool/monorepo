@@ -1,6 +1,11 @@
 # ERD Collaboration Tool
 
-ERD Cloud 스타일의 웹 기반 협업 ERD 도구입니다. 현재는 `gateway-service`, `auth-service`, `team-service`, `erd-service`, `collaboration`로 나뉜 소형 MSA 구조와 observability 스택까지 포함합니다.
+> [!IMPORTANT]
+> 이 저장소는 현재 **reference-only monorepo** 입니다.
+> 신규 개발, CI/CD, 온보딩 기준 저장소는 [`erd-tool-main`](https://github.com/erd-tool/erd-tool-main) 이며, 각 서비스는 submodule로 연결된 개별 repo에서 관리합니다.
+> 이 monorepo는 과거 구조 참고, 수업 자료 보존, 마이그레이션 문맥 확인 용도로만 유지합니다.
+
+ERD Cloud 스타일의 웹 기반 협업 ERD 도구입니다. 현재 운영 기준 구조는 `erd-tool-main` 아래 `gateway-service`, `auth-service`, `team-service`, `erd-service`, `collaboration`, `frontend`, `backend-common`, `infra` 저장소로 분리되어 있습니다.
 
 ## Stack
 
